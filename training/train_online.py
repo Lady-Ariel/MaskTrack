@@ -24,6 +24,7 @@ from PIL import Image
 from docopt import docopt
 import timeit
 import matplotlib
+import collections
 #matplotlib.use('Agg') # Must be before importing matplotlib.pyplot or pylab!
 
 docstr = """
@@ -125,7 +126,7 @@ for i in range(1,anno.n_objects+1):
                                            transform=composed_transforms, seq_name=seq_name, noIterations=noIterations,
                                               object_id=i)
 
-        trainloader[i] = DataLoader(db_train[i], batch_size=p['trainBatch'], shuffle=False, num_workers=2)
+        trainloader[i] = DataLoader(db_train[i], batch_size=p['trainBatch'], shuffle=False, num_workers=1)
 
         nets[i] = deeplab_resnet.Res_Deeplab_no_msc(int(args['--NoLabels']))
         nets[i].float()
@@ -142,8 +143,12 @@ for i in range(1,anno.n_objects+1):
         print("Updating weights from: {}".format(
             os.path.join(db_parent_root_dir, 'lr_' + str(parent_lr) + '_wd_' + str(parent_wd) , 'parent_epoch-' + str(resume_epoch_parent) + '.pth')))
 
-        nets[i].load_state_dict(
-            torch.load(os.path.join(db_parent_root_dir, 'lr_' + str(parent_lr) + '_wd_' + str(parent_wd) , 'parent_epoch-' + str(resume_epoch_parent) + '.pth')))
+	pretrained_net_dict = torch.load(os.path.join(db_parent_root_dir, 'lr_' + str(parent_lr) + '_wd_' + str(parent_wd) , 'parent_epoch-' + str(resume_epoch_parent) + '.pth'))
+	new_state_dict = collections.OrderedDict()
+	for k, v in pretrained_net_dict.items():
+	  name = k[7:] # remove `module.`
+	  new_state_dict[name] = v
+	nets[i].load_state_dict(new_state_dict)
 
         optimizers[i] = optim.SGD([{'params': get_1x_lr_params_NOscale(nets[i]), 'lr': base_lr},
                            {'params': get_10x_lr_params(nets[i]), 'lr': 10 * base_lr}],
@@ -168,8 +173,12 @@ for i in range(1,anno.n_objects+1):
         if torch.cuda.is_available():
             nets[i].cuda()
 
-        nets[i].load_state_dict(
-           torch.load(os.path.join(save_dir, modelName + '_' + seq_name + '_object_id_' + str(i) + 'epoch_' + str(nEpochs) + '.pth')))
+	pretrained_net_dict = torch.load(os.path.join(save_dir, modelName + '_' + seq_name + '_object_id_' + str(i) + 'epoch_' + str(nEpochs) + '.pth'))
+	new_state_dict = collections.OrderedDict()
+	for k, v in pretrained_net_dict.items():
+	  name = k[7:] # remove `module.`
+	  new_state_dict[name] = v
+	nets[i].load_state_dict(new_state_dict)
 
 num_img_tr = len(images)
 print('Number of images: ' + str(num_img_tr))
@@ -202,8 +211,9 @@ for epoch in range(1,nEpochs+1):
         start_time = timeit.default_timer()
 
         print('Starting for object ID: ' + str(object_id) + ', Epoch no: ' + str(epoch))
+	print("***********")
 
-        for ii, sample_batched in enumerate(trainloader[object_id]):
+        for ii, sample_batched in enumerate(trainloader):
 
             inputs, gts, df1, df2 = sample_batched['image'], sample_batched['gt'], sample_batched['df1'], sample_batched['df2']
 
